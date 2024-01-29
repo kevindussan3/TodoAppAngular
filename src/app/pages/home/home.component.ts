@@ -1,7 +1,7 @@
 import { CommonModule } from '@angular/common';
-import { Component, signal } from '@angular/core';
+import { Component, Injector, computed, effect, inject, signal } from '@angular/core';
 import { Task } from '../../models/task.model';
-import { ReactiveFormsModule } from '@angular/forms';
+import { FormControl, ReactiveFormsModule, Validators } from '@angular/forms';
 
 @Component({
   selector: 'app-home',
@@ -11,15 +11,61 @@ import { ReactiveFormsModule } from '@angular/forms';
   styleUrl: './home.component.css'
 })
 export class HomeComponent {
-  task = signal<Task[]>([
-    { title: 'Task 1 PRUEBA', status: true },
-    { title: 'Task 2', status: false },
-    { title: 'Task 3', status: false },
-  ]);
-  changeHandler(event: Event) {
-    const input = event.target as HTMLInputElement;
-    const value = input.value;
-    this.addTask(value);
+
+  injector = inject(Injector);
+
+  constructor(){
+    
+  }
+
+
+
+
+  trackTasks(){
+    effect(() => {
+      const taks = this.task()
+      localStorage.setItem('tasks', JSON.stringify(taks));
+    },{
+      injector: this.injector
+    })
+  }
+
+  ngOnInit(){
+    const storage = localStorage.getItem('tasks')
+    if(storage){
+      const taks = JSON.parse(storage);
+      this.task.set(taks);
+    }
+    this.trackTasks();
+  }
+
+  task = signal<Task[]>([]);
+
+  filter = signal<'all' | 'pending' | 'completed'>('all');
+  tasksByfilter = computed(() => {
+    const filter = this.filter();
+    const taks = this.task();
+    if (filter == 'pending') {
+      return taks.filter(task => !task.status);
+    }
+    if (filter == 'completed') {
+      return taks.filter(task => task.status);
+    }
+    return taks;
+  });
+  newTaskControl = new FormControl('', {
+    nonNullable: true, validators: [
+      Validators.required
+    ]
+  });
+  changeHandler() {
+    if (this.newTaskControl.valid) {
+      const value = this.newTaskControl.value.trim()
+      if (value !== '') {
+        this.addTask(value);
+        this.newTaskControl.setValue('');
+      }
+    }
   }
 
   addTask(title: string) {
@@ -45,5 +91,35 @@ export class HomeComponent {
         ...tasks.slice(index + 1)
       ];
     });
+  }
+
+  updateTaskEditing(index: number) {
+    this.task.update((tasks) => {
+      const taskToEdit = tasks[index];
+      const updatedTask = tasks.map((task, i) => {
+        return i === index ? { ...taskToEdit, editing: true } : { ...task, editing: false }
+      });
+      return updatedTask;
+    });
+  }
+  updateTaskText(index: number, event: Event) {
+    const input = event.target as HTMLInputElement;
+    this.task.update((tasks) => {
+      const taskToEdit = tasks[index];
+      const updatedTask = tasks.map((task, i) => {
+        return i === index ? { ...taskToEdit, title: input.value, editing: false } : { ...task }
+      });
+      return updatedTask;
+    });
+
+  }
+
+  changeFilter(filter: 'all' | 'pending' | 'completed') {
+    this.filter.set(filter)
+
+  }
+
+  ClearTask(){
+    return this.task.update((tasks) => []);
   }
 }
